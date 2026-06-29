@@ -17,6 +17,7 @@ from agilerl.components import (
 )
 from agilerl.components.data import ReplayDataset, Transition
 from agilerl.components.sampler import Sampler
+from agilerl.hpo.mf_pbt import MFPBT
 from agilerl.hpo.mutation import Mutations
 from agilerl.hpo.tournament import TournamentSelection
 from agilerl.networks.actors import DeterministicActor
@@ -102,6 +103,7 @@ def train_off_policy(
     n_step_memory: MultiStepReplayBuffer | None = None,
     tournament: TournamentSelection | None = None,
     mutation: Mutations | None = None,
+    mf_pbt: MFPBT | None = None,
     checkpoint: int | None = None,
     checkpoint_path: str | None = None,
     overwrite_checkpoints: bool = False,
@@ -489,6 +491,19 @@ def train_off_policy(
                     accelerator=accelerator,
                     env=env,
                     grama_scores=grama_side_table,
+                ),
+            )
+        # MF-PBT evolution (multiple-frequencies population-based training)
+        elif mf_pbt is not None and mutation is not None:
+            population.update(
+                mf_pbt.evolve_population(
+                    population.agents,
+                    mutation=mutation,
+                    env_name=env_name,
+                    algo=algo,
+                    save_elite=save_elite,
+                    elite_path=elite_path,
+                    accelerator=accelerator,
                 ),
             )
 

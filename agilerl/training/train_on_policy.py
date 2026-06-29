@@ -8,6 +8,7 @@ from typing import Any
 from accelerate import Accelerator
 
 from agilerl.algorithms import PPO
+from agilerl.hpo.mf_pbt import MFPBT
 from agilerl.hpo.mutation import Mutations
 from agilerl.hpo.tournament import TournamentSelection
 from agilerl.population import Population
@@ -48,6 +49,7 @@ def train_on_policy(
     dormant_tau: float = 0.1,
     tournament: TournamentSelection | None = None,
     mutation: Mutations | None = None,
+    mf_pbt: MFPBT | None = None,
     checkpoint: int | None = None,
     checkpoint_path: str | None = None,
     overwrite_checkpoints: bool = False,
@@ -322,6 +324,19 @@ def train_on_policy(
                     accelerator=accelerator,
                     env=env,
                     grama_scores=grama_side_table,
+                ),
+            )
+        # MF-PBT evolution (multiple-frequencies population-based training)
+        elif mf_pbt is not None and mutation is not None:
+            population.update(
+                mf_pbt.evolve_population(
+                    population.agents,
+                    mutation=mutation,
+                    env_name=env_name,
+                    algo=algo,
+                    save_elite=save_elite,
+                    elite_path=elite_path,
+                    accelerator=accelerator,
                 ),
             )
 
