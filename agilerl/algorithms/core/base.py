@@ -65,6 +65,10 @@ from agilerl.algorithms.core.registry import (
     OptimizerFactory,
 )
 from agilerl.architectures.nemotron_h import register_nemotron_h_liger
+from agilerl.arena.memory.formulas import (
+    FUSED_CHUNK_ROWS_MAX,
+    FUSED_CHUNK_ROWS_MIN,
+)
 from agilerl.llm_envs import RolloutHarness
 from agilerl.metrics import AgentMetrics, MultiAgentMetrics
 from agilerl.modules import EvolvableModule, ModuleDict
@@ -216,8 +220,8 @@ else:
 __all__ = [
     "ActionResult",
     "EvolvableAlgorithm",
-    "MultiAgentRLAlgorithm",
-    "RLAlgorithm",
+    "MultiAgentAlgorithm",
+    "SingleAgentAlgorithm",
 ]
 
 logger = logging.getLogger(__name__)
@@ -1546,7 +1550,7 @@ class EvolvableAlgorithm(ABC, Generic[ExperiencesT], metaclass=RegistryMeta):
         :type accelerator: Accelerator | None, optional
 
         :return: An instance of the algorithm
-        :rtype: RLAlgorithm
+        :rtype: SingleAgentAlgorithm
         """
         checkpoint: dict[str, Any] = torch.load(
             path,
@@ -1717,7 +1721,9 @@ class EvolvableAlgorithm(ABC, Generic[ExperiencesT], metaclass=RegistryMeta):
             delattr(self, attr_name)
 
 
-class RLAlgorithm(EvolvableAlgorithm[ExperiencesT], ABC, Generic[ExperiencesT]):
+class SingleAgentAlgorithm(
+    EvolvableAlgorithm[ExperiencesT], ABC, Generic[ExperiencesT]
+):
     """Base object for all single-agent algorithms in the AgileRL framework.
 
     :param observation_space: The observation space of the environment.
@@ -1771,7 +1777,7 @@ class RLAlgorithm(EvolvableAlgorithm[ExperiencesT], ABC, Generic[ExperiencesT]):
         :param kwargs: Additional keyword arguments to pass to the algorithm constructor.
         :type kwargs: Any
         :return: A list of algorithms.
-        :rtype: list[RLAlgorithm]
+        :rtype: list[SingleAgentAlgorithm]
         """
         return build_classic_rl_population(
             cls,
@@ -1836,9 +1842,7 @@ class RLAlgorithm(EvolvableAlgorithm[ExperiencesT], ABC, Generic[ExperiencesT]):
         )
 
 
-class MultiAgentRLAlgorithm(
-    EvolvableAlgorithm[ExperiencesT], ABC, Generic[ExperiencesT]
-):
+class MultiAgentAlgorithm(EvolvableAlgorithm[ExperiencesT], ABC, Generic[ExperiencesT]):
     """Base object for all multi-agent algorithms in the AgileRL framework.
 
     :param observation_spaces: The observation spaces of the agent environments.
@@ -1906,7 +1910,7 @@ class MultiAgentRLAlgorithm(
         :param kwargs: Additional keyword arguments to pass to the algorithm constructor.
         :type kwargs: Any
         :return: A list of algorithms.
-        :rtype: list[MultiAgentRLAlgorithm]
+        :rtype: list[MultiAgentAlgorithm]
         """
         return build_classic_rl_population(
             cls,
@@ -3036,8 +3040,30 @@ class LLMAlgorithm(EvolvableAlgorithm[ExperiencesT], ABC, Generic[ExperiencesT])
         self.wrap = wrap
         self.use_separate_reference_adapter = use_separate_reference_adapter
         self.cast_logprobs_to_fp32 = cast_logprobs_to_fp32
-        if chunk_rows is not None and chunk_rows <= 0:
-            msg = f"chunk_rows must be a positive int or None, got {chunk_rows}."
+        if chunk_rows is not None and not (
+            FUSED_CHUNK_ROWS_MIN <= chunk_rows <= FUSED_CHUNK_ROWS_MAX
+        ):
+            # The auto-tune clamps to this range; an explicit value did not,
+            # so a hand-set chunk_rows could sit far outside it. Both ends are
+            # pathological rather than merely suboptimal.
+            #
+            # Too small: lm_head is re-read from HBM once per chunk, so the
+            # weight traffic scales as 1/chunk_rows. On Qwen2.5-0.5B at 32k
+            # tokens, chunk_rows=1 reads 8.1 TiB against 32 GiB at 256 -- 256x
+            # the traffic to save 148 MiB, in 32,768 kernel launches.
+            #
+            # Too large: the fp32 tile is chunk_rows x vocab x 4 in both
+            # directions, and past ~hidden/2 the lm_head re-reads are already
+            # smaller than the logit writes, so further growth buys almost no
+            # traffic for linear memory.
+            #
+            # Rejected rather than clamped: silently rewriting an explicit
+            # setting hides the mistake.
+            msg = (
+                f"chunk_rows must be None (auto-tune) or in "
+                f"[{FUSED_CHUNK_ROWS_MIN}, {FUSED_CHUNK_ROWS_MAX}], got "
+                f"{chunk_rows}."
+            )
             raise ValueError(msg)
         self.chunk_rows = chunk_rows
         # vLLM sampling-mismatch correction (truncated importance sampling).
@@ -6081,10 +6107,9 @@ class LLMAlgorithm(EvolvableAlgorithm[ExperiencesT], ABC, Generic[ExperiencesT])
         :return: Rows per chunk.
         :rtype: int
         """
-        if explicit is not None:
-            return explicit
-        workspace_bytes = 256 * 1024 * 1024
-        return min(max(workspace_bytes // max(1, vocab_size * 4), 128), 4096)
+        from agilerl.arena.memory.formulas import resolve_chunk_rows
+
+        return resolve_chunk_rows(vocab_size, explicit)
 
     @staticmethod
     def _logprobs_from_hidden_fused(
