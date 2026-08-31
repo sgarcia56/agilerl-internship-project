@@ -28,6 +28,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from agilerl.hpo.tournament import _record_parent_index
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from agilerl.hpo.mutation import Mutations
 
@@ -168,7 +170,11 @@ class MFPBT:
     # Evolution (exploit + explore)
     # ------------------------------------------------------------------ #
     def evolution(
-        self, population: PopulationT, subpop: int, mutation: Mutations
+        self,
+        population: PopulationT,
+        subpop: int,
+        mutation: Mutations,
+        grama_scores: dict[int, Any] | None = None,
     ) -> PopulationT:
         """Replace a subpopulation's losers with perturbed winner-clones.
 
@@ -179,6 +185,13 @@ class MFPBT:
         survivors and open-for-migration agents are untouched, and the total
         population and per-subpopulation sizes are preserved.
 
+        :param grama_scores: Per-parent map ``{agent.index: _grama_scores}`` of the
+            captured pre-activation gradient snapshots, forwarded verbatim to
+            :meth:`Mutations.mutation <agilerl.hpo.mutation.Mutations.mutation>` so
+            the ReGraMa parameter mutation can score each clone's neurons against
+            the parent it was cloned from. Defaults to None, under which ReGraMa
+            falls back to the Gaussian operator.
+        :type grama_scores: dict[int, Any] | None, optional
         :return: A new population list (the caller's list is not mutated).
         :rtype: list
         """
@@ -192,6 +205,9 @@ class MFPBT:
         for _ in losers:
             winner = winners[int(self.rng.integers(len(winners)))]
             clone = winner.clone(index=self._next_index(), wrap=False)
+            # ReGraMa looks a child's gradient snapshot up in *grama_scores* via
+            # this tag; an untagged clone silently degrades to the Gaussian pass.
+            _record_parent_index(clone, winner.index)
             clone.subpopulation = subpop
             clone.fitness = [NEG_INF]
             clones.append(clone)
@@ -202,7 +218,7 @@ class MFPBT:
             prev_mutate_elite = mutation.mutate_elite
             mutation.mutate_elite = True
             try:
-                clones = mutation.mutation(clones)
+                clones = mutation.mutation(clones, grama_scores=grama_scores)
             finally:
                 mutation.mutate_elite = prev_mutate_elite
 
@@ -344,6 +360,7 @@ class MFPBT:
         save_elite: bool = False,
         elite_path: str | None = None,
         accelerator: Any | None = None,
+        grama_scores: dict[int, Any] | None = None,
     ) -> PopulationT:
         """Run one MF-PBT evolution cycle over the whole population.
 
@@ -351,6 +368,12 @@ class MFPBT:
         subpopulation whose frequency counter has reached its ``delta_i`` is
         evolved (exploit/explore) and migrated.
 
+        :param grama_scores: Per-parent map ``{agent.index: _grama_scores}`` of the
+            captured pre-activation gradient snapshots, threaded through to
+            :meth:`evolution` for the ReGraMa parameter mutation. Every agent alive
+            at capture time is keyed, including migrants carried over from earlier
+            cycles, so a winner is always resolvable. Defaults to None.
+        :type grama_scores: dict[int, Any] | None, optional
         :return: The evolved population (same length, same per-subpopulation counts).
         :rtype: list
         """
@@ -378,7 +401,7 @@ class MFPBT:
             if self.counters[i] < self.deltas[i]:
                 continue
             self.counters[i] = 0
-            population = self.evolution(population, i, mutation)
+            population = self.evolution(population, i, mutation, grama_scores)
             population = self.migration(population, i)
 
         return population

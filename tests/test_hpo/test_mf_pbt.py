@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from agilerl.hpo.mf_pbt import MFPBT
+from agilerl.wrappers.agent import AgentWrapper
 
 
 # --------------------------------------------------------------------------- #
@@ -127,19 +128,44 @@ class FakeAgent:
 
 
 class FakeMutations:
-    """Records the ``mutate_elite`` flag seen and marks every perturbed agent."""
+    """Records the ``mutate_elite`` flag and GraMa side table seen, and marks every
+    perturbed agent."""
 
     def __init__(self, mutate_elite=False):
         self.mutate_elite = mutate_elite
         self.seen_mutate_elite = None
+        self.seen_grama_scores = None
         self.perturbed_agents = []
 
-    def mutation(self, population, pre_training_mut=False):
+    def mutation(self, population, pre_training_mut=False, grama_scores=None):
         self.seen_mutate_elite = self.mutate_elite
+        self.seen_grama_scores = grama_scores
         for agent in population:
             agent.perturbed = True
             self.perturbed_agents.append(agent)
         return population
+
+
+class FakeAgentWrapper(AgentWrapper):
+    """Minimal ``AgentWrapper`` over a :class:`FakeAgent`.
+
+    Reproduces the two behaviours ``_record_parent_index`` turns on: it really is
+    an ``AgentWrapper`` instance, and it inherits ``AgentWrapper.__setattr__``,
+    which forwards an assignment to the wrapped agent only when that agent already
+    carries the attribute. The real ``__init__``/``clone`` are bypassed because
+    they reach for spaces and ``inspect_attributes`` that a fake agent has no use
+    for.
+    """
+
+    def __init__(self, agent):
+        self.agent = agent
+
+    def clone(self, index=None, wrap=False):
+        return FakeAgentWrapper(self.agent.clone(index, wrap))
+
+
+def _wrap(agent):
+    return FakeAgentWrapper(agent)
 
 
 def make_population(subpop_fitnesses, weights=None):
@@ -246,6 +272,80 @@ def test_evolution_winner_clone_selection_is_reproducible():
         return sorted(a.weights for a in evolved if a.fitness[-1] == -math.inf)
 
     assert run() == run()  # identical winner picks for the same seed
+
+
+# --------------------------------------------------------------------------- #
+# ReGraMa plumbing: parent tagging + GraMa side table
+# --------------------------------------------------------------------------- #
+def test_evolution_tags_each_clone_with_its_parent_index():
+    # One winner, so every clone's parent is unambiguous.
+    mf = make_mfpbt(n_subpop=2, n_ind=4, w=1, s=0, o=0, ln=3)
+    pop = make_population({0: [4.0, 3.0, 2.0, 1.0], 1: [8.0, 7.0, 6.0, 5.0]})
+    winner_index = next(a.index for a in pop if a.fitness[-1] == 4.0)
+
+    evolved = mf.evolution(pop, subpop=0, mutation=FakeMutations())
+
+    clones = [a for a in evolved if a.fitness[-1] == -math.inf]
+    assert len(clones) == 3
+    # ReGraMa looks the parent's gradient snapshot up via this tag; without it the
+    # operator silently degrades to the Gaussian pass.
+    assert all(c._parent_index == winner_index for c in clones)
+
+
+def test_evolution_tags_clones_on_the_unwrapped_agent():
+    # AgentWrapper.__setattr__ only forwards to the wrapped agent when the agent
+    # already carries the attribute, which a fresh clone does not -- so the tag has
+    # to be written through the wrapper onto the agent itself.
+    mf = make_mfpbt(n_subpop=2, n_ind=4, w=1, s=0, o=0, ln=3)
+    pop = make_population({0: [4.0, 3.0, 2.0, 1.0], 1: [8.0, 7.0, 6.0, 5.0]})
+    winner_index = next(a.index for a in pop if a.fitness[-1] == 4.0)
+    wrapped = [_wrap(a) for a in pop]
+
+    evolved = mf.evolution(wrapped, subpop=0, mutation=FakeMutations())
+
+    clones = [a for a in evolved if a.fitness[-1] == -math.inf]
+    assert len(clones) == 3
+    # The tag has to land on the agent, not the wrapper -- the mutation reads it
+    # off the unwrapped agent.
+    assert all(vars(c.agent)["_parent_index"] == winner_index for c in clones)
+    assert all("_parent_index" not in vars(c) for c in clones)
+
+
+def test_evolution_forwards_the_grama_side_table_to_mutation():
+    mf = make_mfpbt(n_subpop=2, n_ind=4)
+    pop = make_population({0: [4.0, 3.0, 2.0, 1.0], 1: [8.0, 7.0, 6.0, 5.0]})
+    fm = FakeMutations()
+    side_table = {a.index: [[a.index]] for a in pop}
+
+    mf.evolution(pop, subpop=0, mutation=fm, grama_scores=side_table)
+
+    assert fm.seen_grama_scores is side_table
+
+
+def test_evolution_forwards_none_when_no_side_table_is_given():
+    mf = make_mfpbt(n_subpop=2, n_ind=4)
+    pop = make_population({0: [4.0, 3.0, 2.0, 1.0], 1: [8.0, 7.0, 6.0, 5.0]})
+    fm = FakeMutations()
+
+    mf.evolution(pop, subpop=0, mutation=fm)
+
+    assert fm.seen_grama_scores is None
+
+
+def test_evolve_population_threads_the_grama_side_table_through():
+    mf = make_mfpbt(n_subpop=2, n_ind=4, ratios=[1, 1])
+    pop = make_population({0: [4.0, 3.0, 2.0, 1.0], 1: [8.0, 7.0, 6.0, 5.0]})
+    fm = FakeMutations()
+    side_table = {a.index: [[a.index]] for a in pop}
+
+    mf.evolve_population(pop, mutation=fm, grama_scores=side_table)
+
+    assert fm.seen_grama_scores is side_table
+    # Every agent handed to the mutation operator is tagged with a parent that the
+    # side table can resolve (migrants carry -inf fitness too, but are never
+    # mutated, so they are deliberately not asserted on here).
+    assert fm.perturbed_agents
+    assert all(a._parent_index in side_table for a in fm.perturbed_agents)
 
 
 # --------------------------------------------------------------------------- #
@@ -361,7 +461,7 @@ def test_counter_schedules_subpops_at_their_frequencies():
     fired = []  # (cycle, subpop)
     cycle = {"n": 0}
 
-    def record_evolution(population, subpop, mutation):
+    def record_evolution(population, subpop, mutation, grama_scores=None):
         fired.append((cycle["n"], subpop))
         return population
 

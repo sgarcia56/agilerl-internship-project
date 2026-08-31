@@ -9,6 +9,7 @@ training loop. Complements the fake-agent unit tests in
 
 from __future__ import annotations
 
+import warnings
 from collections import Counter
 from unittest.mock import patch
 
@@ -16,6 +17,7 @@ from gymnasium.spaces import Box, Discrete
 
 from agilerl.algorithms.core.base import EvolvableAlgorithm
 from agilerl.hpo.mf_pbt import MFPBT
+from agilerl.hpo.mutation import Mutations
 from agilerl.models import PPOSpec
 from agilerl.models.env import GymEnvSpec
 from agilerl.models.hpo import (
@@ -145,3 +147,96 @@ def test_mfpbt_evolves_real_population_across_cycles():
         assert counts[0] == 4 and counts[1] == 4
         assert len({a.index for a in agents}) == 8  # indices stay unique
         assert all(isinstance(a, EvolvableAlgorithm) for a in agents)
+
+
+def _make_regrama_trainer() -> LocalTrainer:
+    """A trainer whose parameter mutation is ReGraMa, always fired."""
+    mf_pbt = MFPBTSpec(
+        n_subpopulations=2,
+        n_individuals_per_subpopulation=4,
+        evolution_frequency_ratios=[1, 2],
+        n_winners=1,
+        n_survivors=1,
+        n_open_for_migration=1,
+        n_losers=1,
+    )
+    mutation = MutationSpec(
+        # Force the parameter mutation so every winner-clone takes the ReGraMa path.
+        probabilities=MutationProbabilities(
+            no_mut=0.0, arch_mut=0.0, new_layer=0.0, params_mut=1.0, rl_hp_mut=0.0
+        ),
+        regrama_param_mut=True,
+    )
+    ppo = PPOSpec(
+        learn_step=128,
+        net_config=StochasticActorSpec(
+            encoder_config=MlpSpec(hidden_size=[16]),
+            head_config=MlpSpec(hidden_size=[16]),
+        ),
+    )
+    with patch.object(LocalTrainer, "_make_env", return_value=_DummyEnv()):
+        return LocalTrainer(
+            algorithm=ppo,
+            environment=GymEnvSpec(name="CartPole-v1", num_envs=1),
+            training=TrainingSpec(max_steps=200, evo_steps=50, pop_size=8),
+            mutation=mutation,
+            mf_pbt=mf_pbt,
+        )
+
+
+def test_mfpbt_routes_the_grama_side_table_to_regrama():
+    # MF-PBT clones winners over losers and perturbs the clones. Without the
+    # parent tag and the side table reaching Mutations, ReGraMa cannot resolve a
+    # clone's snapshot and silently degrades to the Gaussian operator.
+    trainer = _make_regrama_trainer()
+    agents = list(trainer.population)
+    for offset, agent in enumerate(agents):
+        agent.fitness = [float(offset)]
+
+    # Sentinel snapshots: truthy, and distinguishable per parent.
+    side_table = {agent.index: [[agent.index]] for agent in agents}
+
+    seen = []
+
+    def _spy(self, individual, grama_scores):
+        seen.append((individual._parent_index, grama_scores))
+        return individual
+
+    with (
+        patch.object(Mutations, "regrama_parameter_mutation", _spy),
+        warnings.catch_warnings(record=True) as caught,
+    ):
+        warnings.simplefilter("always")
+        trainer.mf_pbt.evolve_population(
+            agents,
+            mutation=trainer.mutations,
+            env_name="CartPole-v1",
+            algo="PPO",
+            grama_scores=side_table,
+        )
+
+    # ReGraMa ran, and each clone was scored against its own parent's snapshot.
+    assert seen
+    assert all(scores == side_table[parent] for parent, scores in seen)
+    # No agent degraded to the Gaussian operator.
+    assert not [w for w in caught if "falling back to the Gaussian" in str(w.message)]
+
+
+def test_mfpbt_without_a_side_table_falls_back_loudly():
+    # The contract the wiring protects: an unthreaded side table is a silent
+    # downgrade to Gaussian noise, so it must warn rather than pass unnoticed.
+    trainer = _make_regrama_trainer()
+    agents = list(trainer.population)
+    for offset, agent in enumerate(agents):
+        agent.fitness = [float(offset)]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        trainer.mf_pbt.evolve_population(
+            agents,
+            mutation=trainer.mutations,
+            env_name="CartPole-v1",
+            algo="PPO",
+        )
+
+    assert [w for w in caught if "regrama_param_mut is set" in str(w.message)]

@@ -337,6 +337,7 @@ def train_on_policy(
                     save_elite=save_elite,
                     elite_path=elite_path,
                     accelerator=accelerator,
+                    grama_scores=grama_side_table,
                 ),
             )
 
