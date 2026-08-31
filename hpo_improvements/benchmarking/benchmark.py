@@ -1600,6 +1600,30 @@ def derive_pop_size(manifest: dict) -> int:
     return 1
 
 
+def records_mutation_history(manifest: dict[str, Any]) -> bool:
+    """Return whether *manifest*'s HPO regime yields a faithful mutation history.
+
+    The per-generation ``mutation_history.csv`` encodes evolution as a
+    ``parent_id -> agent_id`` lineage plus a per-application fitness delta over one
+    mutate-then-train cycle. That model holds for tournament selection (every child
+    has exactly one parent it was cloned from), and it is what the mutation-efficacy
+    and population-dynamics diagnostics are derived from -- so the ReGraMa and
+    function-preserving architecture arms keep it in full.
+
+    MF-PBT breaks the model: its *migration* step substitutes an agent from another
+    subpopulation into an open slot wholesale, and its slow-to-fast variant imports
+    one agent's networks under another's hyperparameters, so a migrant's provenance
+    is not a single mutation of a single parent. Rather than emit a lineage whose
+    columns cannot represent that, the history is not recorded at all for MF-PBT
+    runs and the diagnostics that read it degrade to their honest placeholder.
+
+    :param manifest: Raw manifest dict (as loaded from YAML).
+    :return: True when the run should record a mutation history.
+    :rtype: bool
+    """
+    return not manifest.get("mf_pbt")
+
+
 def run_training(
     *,
     base_manifest: dict[str, Any],
@@ -1729,9 +1753,13 @@ def run_training(
     os.environ["WANDB_MODE"] = "offline"
 
     logger.info("=== Training %s on %s (run '%s') ===", algo, env_name, run_name)
-    # Record a per-generation evolutionary mutation history alongside the other
-    # run artifacts. Set process-locally so it covers every algorithm/trainer.
-    set_mutation_history_dir(out_dir)
+    # Record a per-generation evolutionary mutation history alongside the other run
+    # artifacts. Set process-locally so it covers every algorithm/trainer, and only
+    # for the regimes whose lineage the CSV can actually represent (see
+    # records_mutation_history) -- under MF-PBT nothing is written, so every
+    # downstream mechanism figure falls through to its placeholder.
+    write_mutation_history = records_mutation_history(base_manifest)
+    set_mutation_history_dir(out_dir if write_mutation_history else None)
     try:
         with tee_to_file(log_path):
             population, _ = trainer.train(

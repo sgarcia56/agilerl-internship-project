@@ -51,6 +51,43 @@ class TestTrivialHelpers:
 # --------------------------------------------------------------------------- #
 # parse_args                                                                   #
 # --------------------------------------------------------------------------- #
+class TestRecordsMutationHistory:
+    """The gate deciding whether a run writes ``mutation_history.csv``."""
+
+    def test_tournament_regimes_record_history(self):
+        # The ReGraMa / function-preserving arms evolve by cloning one parent per
+        # child, which is exactly what the CSV's lineage columns encode.
+        assert benchmark.records_mutation_history({}) is True
+        assert benchmark.records_mutation_history({"tournament_selection": {}}) is True
+        assert (
+            benchmark.records_mutation_history(
+                {"mutation": {"regrama_param_mut": True}}
+            )
+            is True
+        )
+        assert (
+            benchmark.records_mutation_history(
+                {"mutation": {"arch_mut_type": "func_preserving"}}
+            )
+            is True
+        )
+
+    def test_mfpbt_regimes_do_not_record_history(self):
+        # Migration substitutes a whole agent from another subpopulation, which the
+        # parent_id -> agent_id lineage cannot represent.
+        manifest = {
+            "mf_pbt": {
+                "n_subpopulations": 2,
+                "n_individuals_per_subpopulation": 4,
+            }
+        }
+        assert benchmark.records_mutation_history(manifest) is False
+
+    def test_an_empty_or_absent_mfpbt_block_still_records(self):
+        assert benchmark.records_mutation_history({"mf_pbt": None}) is True
+        assert benchmark.records_mutation_history({"mf_pbt": {}}) is True
+
+
 class TestParseArgs:
     def test_full(self):
         args = benchmark.parse_args(
