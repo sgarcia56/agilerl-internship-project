@@ -430,7 +430,7 @@ def train_off_policy(
         if isinstance(agent, DQN):
             eps_start = epsilon
 
-        # Per-parent gradient snapshots for the ReBorn parameter mutation, captured
+        # Per-parent gradient snapshots for the ReGraMa parameter mutation, captured
         # above while grads were live (cloning drops them). Keyed by pre-tournament
         # agent index; children look theirs up via their ``_parent_index``.
         grama_side_table = None

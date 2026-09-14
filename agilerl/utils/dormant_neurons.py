@@ -43,7 +43,7 @@ that cycle's **last** training minibatch, and stores the result on the agent as
 ``_grama_scores`` -- a list aligned to :func:`_eval_networks` order, each entry a
 list aligned to :func:`_target_activations` order (``None`` for a layer whose
 gradient was never seen). :func:`dormant_neuron_fraction` (the diagnostic) and the
-ReBorn parameter mutation both read this stored snapshot.
+ReGraMa parameter mutation both read this stored snapshot.
 
 Which networks/layers are measured (matching the thesis design decisions):
 
@@ -211,7 +211,7 @@ def _count_dormant(per_neuron: torch.Tensor, tau: float) -> tuple[int, int]:
     never satisfies ``<= tau``, so it would silently mask genuinely dormant
     neurons in the same layer, while one inf drives the layer mean to infinity and
     crushes every other neuron's normalised score to zero. Mapping both to zero
-    instead (as the ReBorn operator does, where recycling a broken neuron is the
+    instead (as the ReGraMa operator does, where recycling a broken neuron is the
     right *action*) would label an exploding neuron dormant -- the opposite of
     what it is -- and make a diverged layer read identically to a genuinely dead
     one. A layer with nothing finite left contributes ``(0, 0)``, which propagates
@@ -297,7 +297,7 @@ class GraMaCapture:
     taken w.r.t. parameter vectors that no longer exist; the released reference
     implementation likewise thresholds whatever single minibatch's gradient is
     currently populated. And the consumer decides surgery on the network *as it
-    stands at the end of the cycle* -- ReBorn resets neurons in exactly that
+    stands at the end of the cycle* -- ReGraMa resets neurons in exactly that
     network -- so it must be scored in that state, not in a stale average. The
     trade-off is single-minibatch noise, bounded by the training batch size (1024
     under the benchmark configs).
@@ -398,7 +398,7 @@ def capture_per_neuron_scores(
     ``|∇_{z_i}L|`` captured during training (see the module docstring for why the
     metric is taken there), aligned to :func:`_target_activations` order. Returns
     ``(activation_module, per_neuron)`` pairs -- skipping layers whose gradient was
-    never captured -- preserving the contract the ReBorn parameter mutation
+    never captured -- preserving the contract the ReGraMa parameter mutation
     consumes. Returns ``[]`` if no scores are available or their count no longer
     matches the network's measured layers (e.g. after an architecture mutation), so
     callers degrade gracefully instead of misaligning.

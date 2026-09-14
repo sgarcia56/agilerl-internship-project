@@ -1163,12 +1163,12 @@ def tournament_selection_and_mutation(
     :type accelerator: accelerate.Accelerator(), optional
     :param language_model: Flag to indicate if the environment is a language model, defaults to False
     :type language_model: bool, optional
-    :param env: Retained for API compatibility; unused by the gradient-based ReBorn
+    :param env: Retained for API compatibility; unused by the gradient-based ReGraMa
         parameter mutation, defaults to None
     :type env: Any, optional
     :param grama_scores: Per-parent map ``{agent.index: _grama_scores}`` of the
         gradient snapshots captured during the last training block, forwarded to the
-        ReBorn parameter mutation (looked up per child via ``_parent_index``),
+        ReGraMa parameter mutation (looked up per child via ``_parent_index``),
         defaults to None
     :type grama_scores: dict[int, Any], optional
     :return: Population of agents after tournament selection and mutation

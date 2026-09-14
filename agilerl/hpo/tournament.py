@@ -20,7 +20,7 @@ def _record_parent_index(
     that attribute, which a fresh clone does not -- so assigning to the wrapper would
     leave the tag on the wrapper alone. That is invisible to
     :meth:`Mutations.parameter_mutation <agilerl.hpo.mutation.Mutations.parameter_mutation>`,
-    which reads it off the unwrapped agent, and the ReBorn parameter mutation would
+    which reads it off the unwrapped agent, and the ReGraMa parameter mutation would
     then silently degrade to the Gaussian operator for every wrapped agent. Reads
     through a wrapper still resolve, via ``AgentWrapper.__getattr__``.
 

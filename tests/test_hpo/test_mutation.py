@@ -2531,13 +2531,13 @@ class TestRebornLayerSurgery:
 
     @staticmethod
     def _counts():
-        return {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        return {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
     def _run(self, mut=None, per_neuron=None):
         """Apply the surgery to the shared fixture; return the layers and counts."""
         producer, next_layer, default_scores = self._setup()
         counts = self._counts()
-        (mut or _make_reborn_mutations(seed=7))._apply_reborn_to_layer(
+        (mut or _make_reborn_mutations(seed=7))._apply_regrama_to_layer(
             producer,
             [next_layer],
             None,
@@ -2553,8 +2553,8 @@ class TestRebornLayerSurgery:
         assert counts["overactive"] == 1
         assert counts["dormant"] == 3
         # Every dormant neuron is either reborn as a partner or Xavier-reset.
-        assert counts["reborn"] + counts["xavier"] == 3
-        assert counts["reborn"] >= 2  # M in [2, 5], 3 dormant available
+        assert counts["regrama"] + counts["xavier"] == 3
+        assert counts["regrama"] >= 2  # M in [2, 5], 3 dormant available
 
     def test_over_active_row_is_rescaled_not_rewritten(self):
         """The split rescales the parent row; it must stay a multiple of itself.
@@ -2601,7 +2601,7 @@ class TestRebornLayerSurgery:
         )
 
         assert counts["overactive"] == 0
-        assert counts["reborn"] == 0
+        assert counts["regrama"] == 0
         assert counts["xavier"] == counts["dormant"] == 3
         # The formerly over-active neuron is now just a healthy one: left alone.
         assert torch.allclose(producer.weight.data[0], torch.tensor([1.0, 2.0, 3.0]))
@@ -2617,8 +2617,8 @@ class TestRebornLayerSurgery:
         # Only neuron 4 is neither dormant nor over-active, so it alone sets the
         # reference scale: column 4 of next_layer is [5, 10].
         expected = 0.25 * float(torch.tensor([5.0, 10.0]).norm())
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
-        mut._apply_reborn_to_layer(
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        mut._apply_regrama_to_layer(
             producer, [next_layer], None, None, per_neuron, counts
         )
 
@@ -2638,8 +2638,8 @@ class TestRebornLayerSurgery:
         # zero-outgoing revival exactly, so seeded comparisons stay meaningful.
         producer, next_layer, per_neuron = self._setup()
         mut = _make_reborn_mutations(seed=1, regrama_out_scale=0.0)
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
-        mut._apply_reborn_to_layer(
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        mut._apply_regrama_to_layer(
             producer, [next_layer], None, None, per_neuron, counts
         )
         zero_cols = sum(
@@ -2659,8 +2659,8 @@ class TestRebornLayerSurgery:
             next_layer = torch.nn.Linear(5, 2)
             per_neuron = torch.tensor([1.0, 0.0, 0.0, 1.0, 1.0])  # 1, 2 dormant
             mut = _make_reborn_mutations(seed=5, regrama_out_scale=scale)
-            counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
-            mut._apply_reborn_to_layer(
+            counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+            mut._apply_regrama_to_layer(
                 producer, [next_layer], None, None, per_neuron, counts
             )
             assert counts["xavier"] == 2  # no over-active neuron -> none claimed
@@ -2704,13 +2704,13 @@ class TestRebornLayerSurgery:
         mut = _make_reborn_mutations(seed=3, regrama_out_scale=0.0)
         # norm = [4, 0, 0, 0]: neuron 0 over-active (>=3), neurons 1-3 dormant.
         per_neuron = torch.tensor([4.0, 0.0, 0.0, 0.0])
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
-        mut._apply_reborn_to_layer(
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        mut._apply_regrama_to_layer(
             producer, [next_layer], None, None, per_neuron, counts
         )
         assert counts["overactive"] == 1
         assert counts["dormant"] == 3
-        assert counts["reborn"] + counts["xavier"] == 3
+        assert counts["regrama"] + counts["xavier"] == 3
 
         after = forward(X)
         assert torch.isfinite(after).all()
@@ -2795,14 +2795,14 @@ class TestRebornConvColumnScale:
         # Neuron 1 dormant, the rest healthy; no over-active neuron, so nothing is
         # claimed for a split and neuron 1 is revived rather than reborn.
         per_neuron = torch.tensor([1.0, 0.0, 1.0, 1.0])
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Computed here rather than via ``_live_column_scale`` so this asserts the
         # revival magnitude independently of the helper the sibling tests pin.
         live = self._true_median_norm([consumer.weight.data[:, n] for n in (0, 2, 3)])
         _make_reborn_mutations(
             seed=3, regrama_out_scale=out_scale
-        )._apply_reborn_to_layer(producer, [consumer], None, None, per_neuron, counts)
+        )._apply_regrama_to_layer(producer, [consumer], None, None, per_neuron, counts)
 
         assert counts["xavier"] == 1
         assert float(consumer.weight.data[:, 1].norm()) == pytest.approx(
@@ -2911,7 +2911,7 @@ class TestRebornBranchedArchitectures:
         scores = self._scores_isolating_nested_sub_encoders(agent, obs)
         head_first = agent.actor.head_net.model[0]
         before = head_first.weight.detach().clone()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act -- surgery only, so the trailing Gaussian pass cannot mask the result
         _make_reborn_mutations()._regrama_network_surgery(
@@ -2935,7 +2935,7 @@ class TestRebornBranchedArchitectures:
         head_first = agent.actor.head_net.model[0]
         fusion_before = fusion.weight.detach().clone()
         head_before = head_first.weight.detach().clone()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act
         _make_reborn_mutations()._regrama_network_surgery(
@@ -2999,7 +2999,7 @@ class TestRebornBranchedArchitectures:
             if isinstance(module, torch.nn.Linear)
         )
         before = linear.weight.detach().clone()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act -- surgery only, so the trailing Gaussian pass cannot mask the result
         _make_reborn_mutations()._regrama_network_surgery(
@@ -3019,7 +3019,7 @@ class TestRebornBranchedArchitectures:
         scores = self._scores_isolating_the_conv_to_dense_boundary(agent, obs)
         linear = agent.actor.encoder.model.encoder_linear_output
         before = linear.weight.detach().clone()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act
         _make_reborn_mutations()._regrama_network_surgery(
@@ -3042,7 +3042,7 @@ class TestRebornBranchedArchitectures:
         scores = _grama_snapshot(agent, obs, fill=_surgery_fill)
         advantage_first = agent.actor.head_net.advantage_net[0]
         before = advantage_first.weight_mu.detach().clone()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act -- surgery only, so the trailing Gaussian pass cannot mask the result
         _make_reborn_mutations()._regrama_network_surgery(
@@ -3377,7 +3377,7 @@ class TestRebornBorrowedEncoderParameters:
         critic_head_first = agent.critic.head_net.model.value_linear_layer_1
         encoder_before = critic_encoder.weight.detach().clone()
         head_before = critic_head_first.weight.detach().clone()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act -- surgery only, so the trailing Gaussian pass cannot mask the result
         _make_reborn_mutations()._regrama_network_surgery(
@@ -3400,7 +3400,7 @@ class TestRebornBorrowedEncoderParameters:
         scores = self._scores_isolating_the_encoder(agent, obs)
         critic_encoder = agent.critic.encoder.model.critic_encoder_linear_layer_1
         before = critic_encoder.weight.detach().clone()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act
         _make_reborn_mutations()._regrama_network_surgery(
@@ -3419,7 +3419,7 @@ class TestRebornBorrowedEncoderParameters:
         scores = _grama_snapshot(agent, obs, fill=_surgery_fill)
         head_output = agent.critic.head_net.model.value_linear_layer_output
         before = head_output.weight.detach().clone()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act
         _make_reborn_mutations()._regrama_network_surgery(
@@ -3487,7 +3487,7 @@ class TestRebornWithCapturedGradients:
         scores = self._capture(agent, obs)
         scores[0][0][1] = 0.0
         before = {k: v.clone() for k, v in agent.actor.state_dict().items()}
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act -- surgery only, so the trailing Gaussian pass cannot mask the result
         _make_reborn_mutations()._regrama_network_surgery(
@@ -3496,7 +3496,7 @@ class TestRebornWithCapturedGradients:
 
         # Assert
         assert counts["dormant"] >= 1
-        assert counts["reborn"] + counts["xavier"] == counts["dormant"]
+        assert counts["regrama"] + counts["xavier"] == counts["dormant"]
         changed = [
             k
             for k, v in agent.actor.state_dict().items()
@@ -3751,14 +3751,14 @@ class TestRebornSimBaResidualBlocks:
             if type(m).__name__ == "SimbaResidualBlock"
         ]
         before = [b.linear1.weight.detach().clone() for b in blocks]
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act
         _make_reborn_mutations()._regrama_network_surgery(net, scores[0], counts)
 
         # Assert
         assert len(blocks) == self.BLOCKS
-        assert counts["reborn"] == 2 * self.BLOCKS, (
+        assert counts["regrama"] == 2 * self.BLOCKS, (
             "each block's over-active neuron should be split over its two dormant ones"
         )
         for block, original in zip(blocks, before, strict=True):
@@ -3791,7 +3791,7 @@ class TestRebornSimBaResidualBlocks:
         net.eval()
         with torch.no_grad():
             before = net(processed).clone()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act
         _make_reborn_mutations()._regrama_network_surgery(net, scores[0], counts)
@@ -3799,7 +3799,7 @@ class TestRebornSimBaResidualBlocks:
         # Assert
         with torch.no_grad():
             after = net(processed)
-        assert counts["reborn"] == 2 * self.BLOCKS, "no split was exercised"
+        assert counts["regrama"] == 2 * self.BLOCKS, "no split was exercised"
         assert counts["xavier"] == 0, "this fixture must exercise the split alone"
         assert torch.allclose(before, after, atol=1e-5, rtol=1e-4)
 
@@ -3821,7 +3821,7 @@ class TestRebornNoisyLayers:
 
     @staticmethod
     def _counts():
-        return {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        return {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
     # One over-active neuron (0) and exactly two dormant ones (1, 2). A split
     # claims at least two partners, so the pool is always fully claimed and no
@@ -3840,7 +3840,7 @@ class TestRebornNoisyLayers:
         counts = self._counts()
 
         # Act
-        _make_reborn_mutations()._apply_reborn_to_layer(
+        _make_reborn_mutations()._apply_regrama_to_layer(
             producer, [consumer], None, None, self.SPLIT_SCORES, counts
         )
 
@@ -3869,7 +3869,7 @@ class TestRebornNoisyLayers:
         counts = self._counts()
 
         # Act
-        _make_reborn_mutations()._apply_reborn_to_layer(
+        _make_reborn_mutations()._apply_regrama_to_layer(
             producer, [consumer], None, None, self.RESET_SCORES, counts
         )
 
@@ -3901,7 +3901,7 @@ class TestRebornNormalisedLayers:
 
     @staticmethod
     def _counts():
-        return {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        return {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
     SPLIT_SCORES = TestRebornNoisyLayers.SPLIT_SCORES
     RESET_SCORES = TestRebornNoisyLayers.RESET_SCORES
@@ -3915,7 +3915,7 @@ class TestRebornNormalisedLayers:
         counts = self._counts()
 
         # Act
-        _make_reborn_mutations()._apply_reborn_to_layer(
+        _make_reborn_mutations()._apply_regrama_to_layer(
             producer, [consumer], None, None, self.SPLIT_SCORES, counts, norm=norm
         )
 
@@ -3939,7 +3939,7 @@ class TestRebornNormalisedLayers:
         counts = self._counts()
 
         # Act
-        _make_reborn_mutations()._apply_reborn_to_layer(
+        _make_reborn_mutations()._apply_regrama_to_layer(
             producer, [consumer], None, None, self.SPLIT_SCORES, counts, norm=norm
         )
 
@@ -3963,7 +3963,7 @@ class TestRebornNormalisedLayers:
         counts = self._counts()
 
         # Act
-        _make_reborn_mutations()._apply_reborn_to_layer(
+        _make_reborn_mutations()._apply_regrama_to_layer(
             producer, [consumer], None, None, self.RESET_SCORES, counts, norm=norm
         )
 
@@ -3982,7 +3982,7 @@ class TestRebornNormalisedLayers:
         counts = self._counts()
 
         # Act
-        _make_reborn_mutations()._apply_reborn_to_layer(
+        _make_reborn_mutations()._apply_regrama_to_layer(
             producer, [consumer], None, None, self.RESET_SCORES, counts, norm=norm
         )
 
@@ -4075,7 +4075,7 @@ class TestRebornRecurrentEncoders:
     def test_warns_that_the_recurrent_core_is_not_recycled(self):
         # Arrange
         net = self._recurrent_network()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act / Assert
         with pytest.warns(UserWarning, match="recurrent"):
@@ -4093,12 +4093,12 @@ class TestRebornRecurrentEncoders:
             _surgery_fill(head_first.out_features),
         ]
         before = projection.weight.detach().clone()
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Act
         with pytest.warns(UserWarning, match="recurrent"):
             _make_reborn_mutations()._regrama_network_surgery(net, scores, counts)
 
         # Assert
-        assert counts["reborn"] > 0
+        assert counts["regrama"] > 0
         assert not torch.equal(before, projection.weight.detach())

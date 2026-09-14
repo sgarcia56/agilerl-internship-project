@@ -805,7 +805,7 @@ class Mutations:
         every dormant neuron falls through to that reset. A caller that lowers it in
         Python re-enables ReBorn's neuron *split*, in which an over-active neuron is
         reborn into the dormant neurons it claims. **That split is not
-        function-preserving in general** -- see :meth:`_apply_reborn_to_layer` for the
+        function-preserving in general** -- see :meth:`_apply_regrama_to_layer` for the
         conditions it needs, how it adapts to a normalisation, and what it preserves
         unconditionally. It is a mutation regardless of whether those conditions hold:
         a perturbation the tournament can select against, not a guaranteed-safe
@@ -837,7 +837,7 @@ class Mutations:
             individual.mut_details = {"category": "no mutation", "name": "none"}
             return individual
 
-        counts = {"reborn": 0, "xavier": 0, "overactive": 0, "dormant": 0}
+        counts = {"regrama": 0, "xavier": 0, "overactive": 0, "dormant": 0}
 
         # Route each evaluation network's captured per-layer gradient scores
         # positionally (the child's architecture matches its parent's, since an
@@ -913,7 +913,7 @@ class Mutations:
         return {
             "category": "reborn",
             "name": "param_reborn",
-            "neurons_reborn": counts["reborn"],
+            "neurons_reborn": counts["regrama"],
             "neurons_xavier_reset": counts["xavier"],
             "overactive_count": counts["overactive"],
             "dormant_count": counts["dormant"],
@@ -953,7 +953,7 @@ class Mutations:
             # Keyed on the producer, not the network: a nested sub-encoder's conv
             # stack has its own flattened layout (see :meth:`_cnn_dims_by_module`).
             cnn_channels, cnn_spatial = cnn_dims.get(id(producer), (None, None))
-            self._apply_reborn_to_layer(
+            self._apply_regrama_to_layer(
                 producer,
                 next_layers,
                 cnn_channels,
@@ -963,7 +963,7 @@ class Mutations:
                 norm=norm,
             )
 
-    def _apply_reborn_to_layer(
+    def _apply_regrama_to_layer(
         self,
         producer: nn.Module,
         next_layers: list[nn.Module],
@@ -975,10 +975,11 @@ class Mutations:
     ) -> None:
         """Perform the dormant-neuron surgery on the neurons of one producing layer.
 
-        Keeps the ReBorn name because the *split* it performs when a neuron scores
-        above ``overact_beta`` is Qin et al.'s operator. That half is unreachable
-        from a manifest -- ``overact_beta`` defaults to ``inf``, leaving every
-        dormant neuron to the Xavier reset that is ReGraMa.
+        Named for ReGraMa because that is the only half a manifest can reach:
+        ``overact_beta`` defaults to ``inf``, leaving every dormant neuron to the
+        Xavier reset. The *split* performed when a neuron scores above
+        ``overact_beta`` is instead Qin et al.'s ReBorn operator, kept here as a
+        Python-only escape hatch.
 
         *next_layers* holds every layer that consumes the producer's neurons --
         more than one when the neurons feed parallel streams, as a duelling
@@ -1182,7 +1183,7 @@ class Mutations:
                 # come from x rather than from the unit it replaced.
                 self._copy_norm_state(norm, dst=i, src=x, neurons=prod_neurons)
 
-            counts["reborn"] += take
+            counts["regrama"] += take
 
         # Unclaimed dormant neurons: Xavier-reset incoming, re-seed outgoing at
         # ``regrama_out_scale`` times each consumer's live column scale. The

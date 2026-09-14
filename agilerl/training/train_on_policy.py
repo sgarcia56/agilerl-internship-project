@@ -262,7 +262,7 @@ def train_on_policy(
                 agent.finalize_training_step(steps)
             pbar.update(steps // population.size)
 
-        # Per-parent gradient snapshots for the ReBorn parameter mutation, captured
+        # Per-parent gradient snapshots for the ReGraMa parameter mutation, captured
         # above while grads were live (cloning drops them). Keyed by pre-tournament
         # agent index; children look theirs up via their ``_parent_index``.
         grama_side_table = None
