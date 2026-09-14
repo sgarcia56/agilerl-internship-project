@@ -2,15 +2,15 @@
 # PPO WITH HPO + CROSSOVER (population of 16, elitism, architecture +
 # RL-hyperparameter mutations; activation mutations OFF) on Gymnasium MuJoCo.
 #
-# This is the crossover-operator variant of ppo_relu_hpo.yaml: identical in every
+# This is the crossover-operator variant of the PPO reference manifest: identical in every
 # respect except that the `tournament_selection` block is replaced by a `crossover`
 # block. The new evolution procedure is: evaluate fitness -> recombine the
 # population by two-point crossover -> mutate as usual. Crossover recombines each
 # agent's hyperparameters freely while keeping architecture+weights+activations as
-# one inseparable gene. See ppo_relu_hpo.yaml for the full derivation of the base
+# one inseparable gene. See the PPO reference manifest for the full derivation of the base
 # hyperparameters, the mutation block and the architecture search space.
 #
-# Crossover additions over ppo_relu_hpo.yaml:
+# Crossover additions over the PPO reference manifest:
 #   crossover.num_parents = 8 (top half of pop_size = 16 form the recombination
 #     pool -- stronger truncation selection than the paper's ~80%)
 #   crossover.swap_prob = 0.333333 (per-section hyperparameter-exchange probability;
@@ -28,7 +28,7 @@ algorithm:
     action_std_init: 0.0
     clip_coef: 0.2
     ent_coef: 0.001  # nonzero so HPO can mutate it (a 0.0 base is a multiplicative
-                     # no-op); matches ppo_relu_no_hpo.yaml's base
+                     # no-op); matches the reference manifest's base
     vf_coef: 0.5
     max_grad_norm: 0.5
     target_kl:
