@@ -1,11 +1,11 @@
 ---
-# ReGraMa comparison -- DORMANT baseline, ORDINARY NOISE ONLY (derived from
-# ppo_relu_hpo_dormant.yaml, identical to it except random_reset_param_mut and
-# amplified_gauss_param_mut). Both the random-reset and the amplified ("super")
-# bands are ablated, leaving the Gaussian parameter mutation as ordinary noise of
-# std mutation_sd x |w| on the 90% of selected weights that band already covered.
-# This is the gentlest Gaussian arm, and the closest non-ReGraMa comparator to
-# ppo_relu_regrama.yaml, whose trailing pass drops the amplified band only.#
+# ReGraMa comparison -- DORMANT baseline, RANDOM-RESET BAND ABLATED (derived from
+# baseline.yaml, identical to it except random_reset_param_mut).
+# The Gaussian parameter mutation keeps its amplified and ordinary noise bands but
+# no longer REPLACES any weight with a fresh N(0, 1) draw -- the most destructive
+# of the three bands, since it discards the trained value outright and ignores the
+# scale its layer was initialised at. Read against baseline.yaml to
+# attribute that band's share of the dormancy trace and of fitness.#
 # The three bands of the Gaussian parameter mutation are drawn per selected weight
 # and are mutually exclusive: amplified ("super") noise at 5% of draws, a random
 # reset at the next 5%, ordinary noise at the remaining 90%. Switching a band off
@@ -22,10 +22,10 @@
 # comment and the `mutation` block); architecture, new-layer, activation and
 # RL-hyperparameter mutations are all OFF. No hyperparameter search happens.
 #
-# This is the HPO counterpart of ppo_relu_no_hpo.yaml. The base hyperparameters,
+# This is the AgileRL-HPO arm of the PPO reference manifest. The base hyperparameters,
 # the "ReLU to the Rescue" (Jesson et al., 2024) mapping, and the 1-env -> 16-env
 # CleanRL scaling (learn_step = 16 x 2048 = 32768, batch_size = 32768/32 = 1024)
-# are unchanged -- see ppo_relu_no_hpo.yaml for the full derivation -- with one
+# are unchanged -- see the PPO reference manifest for the full derivation -- with one
 # historical exception: ent_coef is raised from the paper's 0.0 to 0.001 (it was
 # made mutable in the full HPO regime; under this ablation rl_hp mutation is OFF,
 # so it simply stays at 0.001). The `mutation` / `tournament_selection` blocks
@@ -49,7 +49,7 @@ algorithm:
     action_std_init: 0.0
     clip_coef: 0.2
     ent_coef: 0.001  # nonzero so HPO can mutate it (a 0.0 base is a multiplicative
-                     # no-op); matches ppo_relu_no_hpo.yaml's base
+                     # no-op); matches the reference manifest's base
     vf_coef: 0.5
     max_grad_norm: 0.5
     target_kl:
@@ -158,7 +158,7 @@ mutation:
     rand_seed: 42
     mutate_elite: false  # keep the elite member unmutated so the best agent survives intact into the next generation
     random_reset_param_mut: false     # ABLATED -- no weight is replaced by a fresh N(0, 1) draw; that band's weights keep their trained values
-    amplified_gauss_param_mut: false  # ABLATED -- no amplified ("super") perturbation; that band's weights keep their trained values
+    amplified_gauss_param_mut: true   # keep the amplified ("super") Gaussian band, whose std is 10x the weight's own magnitude
     regrama_param_mut: false          # original Gaussian parameter mutation only -- no dormant-neuron resets
 
 network:

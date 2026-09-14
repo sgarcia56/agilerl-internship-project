@@ -15,11 +15,11 @@
 #
 # TUNED Double DQN on the Atari 2600 suite. The base hyperparameters, the Mnih et al.
 # (2015) -> AgileRL mapping, and the tuned Double DQN deltas from van Hasselt, Guez &
-# Silver (2016) are all unchanged -- see dqn_double_tuned_no_hpo.yaml for the full
+# Silver (2016) are all unchanged -- see the DQN reference manifest for the full
 # derivation (epsilon decay, tau = 1/30000, reward clipping, replay-buffer sizing,
 # etc.), EXCEPT that the training budget is cut down: max_steps = 1,000,000
 # per-agent steps with an evolution event every 100,000 (10 parameter-mutation
-# cycles) -- evo_steps/learning_delay match the full dqn_double_tuned_hpo.yaml
+# cycles) -- evo_steps/learning_delay match the full the full DQN HPO regime
 # convention (pop 16, 6.25M steps); max_steps is cut down for a cheaper population
 # run. See the eps_decay note at the bottom.
 #
@@ -28,7 +28,7 @@
 #   arch / new_layer / act / rl_hp mutations are all OFF
 #   rl_hp_selection below is retained for provenance but INERT (rl_hp_mut = 0.0)
 #   network min/max bounds are likewise inert (arch mutations OFF -- shape fixed)
-#   dqn_double_tuned_no_hpo.yaml (one agent, no mutation at all) is the natural
+#   a no-HPO run (one agent, no mutation at all) is the natural
 #     mutation-free control for both arms
 
 algorithm:
@@ -39,16 +39,16 @@ algorithm:
     gamma: 0.99
     tau: 3.3333333333333334e-05  # target network update freq 30,000 -> Polyak tau = 1/30000
     double: true
-    # DELIBERATELY false, matching dqn_double_tuned_regrama.yaml (the other
+    # DELIBERATELY false, matching dqn_candidate.yaml (the other
     # dqn_double_tuned_*.yaml keep it true). That config must disable CUDA graphs
     # so ReGraMa's GraMa backward hooks fire; this is its isolation baseline, so it
     # has to run under the same compilation regime or the comparison would confound
     # the parameter operator with a CUDA-graph difference. See the longer note in
-    # dqn_double_tuned_regrama.yaml.
+    # dqn_candidate.yaml.
     cudagraphs: false
 
 environment:
-    name: Pong-v5
+    name: Asterix-v5
     num_envs: 16
 
 mutation:
@@ -117,7 +117,7 @@ mutation:
         # tuned 1/30000 base value; learn_step carries the related search.
     mutation_sd: 0.1  # std of the Gaussian weight perturbation for params_mut (typical)
     rand_seed: 42
-    # true (unlike the full dqn_double_tuned_hpo.yaml regime, where the elite
+    # true (unlike the full DQN HPO regime, where the elite
     # survives unmutated): this is a dormancy-diagnostic probe, so the elite must
     # also receive Gaussian mutations or eval/best_dormant_fraction can measure an
     # agent the operator never touched.
@@ -127,7 +127,7 @@ mutation:
     regrama_param_mut: false          # original Gaussian parameter mutation only -- no dormant-neuron resets
 
 network:
-    # Nature DQN convolutional architecture (see dqn_double_tuned_no_hpo.yaml).
+    # Nature DQN convolutional architecture (see the DQN reference manifest).
     # NB: under this parameter-operator isolation the architecture is FIXED (arch /
     # new_layer mutations are OFF), so the min/max bounds below are INERT -- kept
     # only to satisfy manifest validation and for provenance with the full HPO
@@ -170,7 +170,7 @@ network:
 replay_buffer:
     # 300,000 (not the paper's 1,000,000): AgileRL keeps the buffer on the
     # training device and stores full 4-frame stacks for obs and next_obs, so 1M
-    # would need ~53 GiB of GPU memory. See dqn_double_tuned_no_hpo.yaml for details.
+    # would need ~53 GiB of GPU memory. See the DQN reference manifest for details.
     # NOTE: this buffer is allocated per agent; with pop_size = 4 the run needs ~4x
     # the replay memory of the single-agent no-HPO run.
     max_size: 300_000
@@ -187,11 +187,11 @@ training:
     target_score:
     pop_size: 3
     evo_steps: 50_000  # env steps between evolution events -> 20 parameter-mutation cycles
-                       # half of dqn_double_tuned_hpo.yaml's evo_steps convention (100,000)
+                       # half of the full DQN HPO regime's evo_steps convention (100,000)
     eval_steps:
     eval_loop: 1
     dormant_tau: 0.01  # tau threshold for the dormant-neuron metric (Sokar et al. 2023)
-    learning_delay: 25_000  # half of dqn_double_tuned_hpo.yaml's full-regime value (50,000)
+    learning_delay: 25_000  # half of the full DQN HPO regime's full-regime value (50,000)
     eps_start: 1.0
     eps_end: 0.01
     # UNCHANGED from the full-length runs: at max_steps = 1,000,000 this schedule now
