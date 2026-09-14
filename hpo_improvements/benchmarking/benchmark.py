@@ -7,7 +7,7 @@ per-environment and aggregate plots plus a rendered video of the best agent.
 
 Run directly from this folder, e.g.::
 
-    python benchmark.py --config configs/ppo_relu_no_hpo.yaml \
+    python benchmark.py --config configs/baseline.yaml \
         --project my_project --name run0 --seeds 1,2,3 --device cpu --envs all
 
 Pass ``--seeds`` (or a single ``--seed``) to train one ``(environment, seed)``
