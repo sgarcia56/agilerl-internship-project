@@ -39,7 +39,7 @@ algorithm:
     share_encoders: false
 
 environment:
-    name: Ant-v4
+    name: Hopper-v4
     num_envs: 16
 
 mutation:
@@ -174,9 +174,9 @@ tournament_selection:
     elitism: true  # the single best agent is cloned into the next generation each step (preserved unmutated, since mutate_elite is false above)
 
 training:
-    max_steps: 12_000_000
+    max_steps: 6_000_000
     target_score:
-    pop_size: 16
+    pop_size: 4
     # Env steps each agent trains between evolution events. Set to 5 x the base
     # rollout (5 x 32768 = 163840), a multiple of learn_step so agents complete
     # whole collect->update cycles. Five full PPO updates per generation is enough
