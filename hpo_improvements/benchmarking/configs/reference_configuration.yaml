@@ -1,48 +1,57 @@
 ---
-# ppo_relu -- COMBINED-ARM BASELINE (original parameter + architecture
-# mutations) on PPO / MuJoCo.
+# ppo_relu -- IMPROVED HPO (ReGraMa parameter mutations + function-preserving
+# architecture mutations) on PPO / MuJoCo.
 #
-# The matched baseline for ppo_relu_regrama_func_preserv.yaml. Identical to
-# it in every respect -- same mutation probabilities, same network bounds, same
-# budget -- except that both operators are AgileRL originals: regrama_param_mut:
-# false (Gaussian weight noise, both the random-reset and amplified bands live) and
-# arch_mut_type: original (positional add/remove, no Net2Net surgery). Read this
-# curve only against its combined twin.
+# The matched twin of ppo_relu_hpo.yaml: the *full* AgileRL HPO regime (all five
+# mutation kinds live, RL-hyperparameter search included), with both thesis
+# operators substituted for their AgileRL originals. Everything else -- base
+# hyperparameters, mutation probabilities, rl_hp_selection, network bounds,
+# tournament settings and the step budget -- is inherited from ppo_relu_hpo.yaml
+# unchanged, so the pair differs only in the operator switches below and the
+# comparison isolates the two improvements acting together inside a realistic
+# HPO run (rather than in the single-operator ablations, where every other
+# mutation is switched off).
 #
-# Derived from ppo_relu_func_preserv.yaml; that file's own notes follow.
+# The four switched fields:
+#   regrama_param_mut: true          ReGraMa Xavier-resets every dormant neuron
+#                                    (normalised GraMa score <= dormant_tau)
+#                                    before the trailing Gaussian pass
+#   amplified_gauss_param_mut: false drops the divergence-prone amplified band
+#                                    of that Gaussian pass
+#   arch_mut_type: func_preserving   architecture *additions* become Net2Net-style
+#                                    function-preserving (removals stay original)
+#   arch_fp_noise: 0.02              symmetry-breaking noise on the new units'
+#                                    fan-out, so added capacity is recruitable
 #
-# ppo_relu -- ARCHITECTURE-MUTATION ABLATION (function-preserving arch mutations).
+# NB -- the nets here are Tanh (inherited from ppo_relu_hpo.yaml, unlike the
+# single-operator arms, which switch to ReLU). Net2DeeperNet is exact only for
+# ReLU/Identity, so the new_layer mutations fall back to the original
+# initialisation with a one-time warning; add_node / add_latent_node are
+# preserving under any activation and are unaffected.
 #
-# Derived from ppo_relu_hpo.yaml. Population = 4; only no_mutation and architecture
-# mutations are active (no_mut / arch_mut / new_layer; params / act / rl_hp = 0).
-# arch_mut_type: func_preserving makes each architecture *addition* Net2Net-style
-# function-preserving: added units get zero outgoing weights and new head layers are
-# identity-initialised. Removals keep AgileRL's original random-count positional
-# behaviour, so this arm differs from its baseline only in how capacity is added. Its
-# baseline is ppo_relu_arch_original.yaml (identical except arch_mut_type).
-# PPO WITH HPO (population of 4, elitism, architecture mutations only; activation
-# mutations OFF) on Gymnasium MuJoCo.
+# ppo_relu_hpo.yaml's own notes follow.
 #
-# This is an architecture-mutation ablation of the HPO counterpart of
-# ppo_relu_no_hpo.yaml. The base hyperparameters, the "ReLU to the Rescue"
-# (Jesson et al., 2024) mapping, and the 1-env -> 16-env CleanRL scaling
-# (learn_step = 16 x 2048 = 32768, batch_size = 32768/32 = 1024) are unchanged --
-# see ppo_relu_no_hpo.yaml for the full derivation. (ent_coef is left at 0.001
-# rather than the paper's 0.0, inherited from the HPO config; it is not mutated
-# here since rl_hp mutations are off.) The other additions here are the
-# `mutation` / `tournament_selection` blocks (and pop_size = 4), which switch this
-# same training script into an evolutionary HPO regime: a population of agents is
-# trained, periodically mutated, and re-selected by tournament instead of a single
-# never-mutated agent.
+# PPO WITH HPO (population of 4, elitism, architecture + RL-hyperparameter
+# mutations; activation mutations OFF) on Gymnasium MuJoCo.
+#
+# This is the HPO counterpart of ppo_relu_no_hpo.yaml. The base hyperparameters,
+# the "ReLU to the Rescue" (Jesson et al., 2024) mapping, and the 1-env -> 16-env
+# CleanRL scaling (learn_step = 16 x 2048 = 32768, batch_size = 32768/32 = 1024)
+# are unchanged -- see ppo_relu_no_hpo.yaml for the full derivation -- with one
+# deliberate exception: ent_coef is raised from the paper's 0.0 to 0.001 so HPO can
+# mutate it (the multiplicative mutation cannot move a 0.0 base off zero). The other
+# additions here are the `mutation` / `tournament_selection` blocks (and
+# pop_size = 4), which switch this same training script into an evolutionary HPO
+# regime: a population of agents is trained, periodically mutated, and re-selected
+# by tournament instead of a single never-mutated agent.
 #
 # HPO additions over ppo_relu_no_hpo.yaml:
 #   pop_size = 4, elitism = true, tournament_size = 2
-#   only no_mutation + architecture mutations active (no_mut / arch_mut /
-#     new_layer); activation / parameter / RL-hyperparameter mutations are OFF
-#     (act_mut = params_mut = rl_hp_mut = 0) to isolate the arch-mutation operator
-#   the rl_hp_selection block below still defines the (unused) HP search space,
-#     but with rl_hp_mut = 0 no RL hyperparameters are mutated
-#   network min/max bounds actively define the architecture search space
+#   activation mutations OFF (act_mut = 0.0); arch / new_layer / params / rl_hp on
+#   rl_hp_selection mutates the highest-leverage, well-behaved PPO hyperparameters
+#     (lr, clip_coef, update_epochs, batch_size, learn_step, ent_coef), each with
+#     grow/shrink factors scaled to its sensitivity
+#   network min/max bounds now actively define the architecture search space
 
 algorithm:
     name: PPO
@@ -62,26 +71,23 @@ algorithm:
     share_encoders: false
 
 environment:
-    name: Ant-v4
+    name: Hopper-v4
     num_envs: 16
 
 mutation:
+    # Typical AgileRL MLP/MuJoCo mutation probabilities, with activation mutation
+    # disabled (the paper's tanh nets are kept; no permutation among activations).
     # no_mut is the relative weight of "leave this agent unchanged"; the remaining
     # weights are the relative weights of each mutation kind (renormalised
-    # internally). Both operators under test are live at 0.3 against a 0.4 control,
-    # so per evolution step ~40% of agents are passed through untouched (the
-    # training-only control for the efficacy diagnostic), ~30% get an architecture
-    # mutation and ~30% a parameter mutation. new_layer is conditional *within*
-    # arch_mut, not a fifth top-level weight. Activation and RL-hyperparameter
-    # mutations stay OFF so the contrast with the baseline twin isolates the two
-    # operators.
+    # internally), so each enabled non-trivial mutation fires on roughly 1/5 of
+    # agents per evolution step and ~40% are passed through untouched.
     probabilities:
-        no_mut: 0.4      # leave unchanged: training-only control for the efficacy diagnostic
-        arch_mut: 0.3    # ON -- the architecture operator under test
+        no_mut: 0.4
+        arch_mut: 0.2    # add/remove hidden nodes within the bounds below
         new_layer: 0.2   # add/remove a whole hidden layer (head) within the bounds below
-        params_mut: 0.3  # ON -- the parameter operator under test, composing with the arch one
-        act_mut: 0.0     # OFF -- fixed ReLU (arch-mutation ablation; act_mut disabled)
-        rl_hp_mut: 0.0   # grow/shrink one of the rl_hp_selection hyperparameters below
+        params_mut: 0.2  # Gaussian noise on weights, strength = mutation_sd
+        act_mut: 0.0     # OFF -- keep tanh throughout (per the ReLU-paper PPO MuJoCo recipe)
+        rl_hp_mut: 0.2   # grow/shrink one of the rl_hp_selection hyperparameters below
     rl_hp_selection:
         # The highest-leverage, well-behaved PPO hyperparameters, each centred on
         # this config's base value. grow/shrink factors are the multiplicative step
@@ -161,12 +167,13 @@ mutation:
     mutation_sd: 0.1  # std of the Gaussian weight perturbation for params_mut (typical)
     rand_seed: 42
     mutate_elite: false  # keep the elite member unmutated so the best agent survives intact into the next generation
-    arch_mut_type: original  # original | func_preserving architecture mutations
-    arch_encoder_layer_mut: false  # encoder add_layer/remove_layer OFF on BOTH arms, so the
-                                   # pair differs only in the two operator switches
-    random_reset_param_mut: true      # keep the random-reset band of the Gaussian parameter mutation (a selected weight is REPLACED by a fresh N(0, 1) draw)
-    amplified_gauss_param_mut: true   # keep the amplified ("super") Gaussian band, whose std is 10x the weight's own magnitude
-    regrama_param_mut: false          # original Gaussian parameter mutation only -- no dormant-neuron resets
+    random_reset_param_mut: true      # keep the random-reset band of the trailing Gaussian pass (a selected weight is REPLACED by a fresh N(0, 1) draw)
+    amplified_gauss_param_mut: false  # drop the amplified ("super") Gaussian band, which is divergence-prone; the dropped mass is NOT redistributed
+    regrama_param_mut: true           # ReGraMa: Xavier-reset every dormant neuron (normalised GraMa score <= dormant_tau) before the trailing Gaussian pass
+    dormant_tau: 0.01                 # operator threshold: a neuron is dormant when its normalised GraMa score <= this (matches training.dormant_tau below)
+    arch_mut_type: func_preserving    # original | func_preserving architecture mutations -- only *additions* are preserving; removals stay positional
+    arch_fp_noise: 0.02               # symmetry-breaking noise on new units' fan-out, relative to the consuming layer's weight std (0.0 = exact-zero preservation)
+    arch_encoder_layer_mut: false     # pinned OFF: it is tri-state and would default to true under func_preserving, widening the search space away from the ppo_relu_hpo.yaml twin
 
 network:
     # Paper architecture: width-64 tanh MLP. Under HPO the min/max bounds below
@@ -220,4 +227,4 @@ training:
     evo_steps: 163840
     eval_steps:
     eval_loop: 1
-    dormant_tau: 0.01  # tau for the dormant-neuron metric (matches the operator threshold above)
+    dormant_tau: 0.01  # tau threshold for the dormant-neuron metric (Sokar et al. 2023)
