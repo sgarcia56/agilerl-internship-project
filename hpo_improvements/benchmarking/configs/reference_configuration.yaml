@@ -2,11 +2,11 @@
 # ppo_relu -- IMPROVED HPO (ReGraMa parameter mutations + function-preserving
 # architecture mutations) on PPO / MuJoCo.
 #
-# The matched twin of ppo_relu_hpo.yaml: the *full* AgileRL HPO regime (all five
+# The matched twin of the PPO reference manifest: the *full* AgileRL HPO regime (all five
 # mutation kinds live, RL-hyperparameter search included), with both thesis
 # operators substituted for their AgileRL originals. Everything else -- base
 # hyperparameters, mutation probabilities, rl_hp_selection, network bounds,
-# tournament settings and the step budget -- is inherited from ppo_relu_hpo.yaml
+# tournament settings and the step budget -- is inherited from the PPO reference manifest
 # unchanged, so the pair differs only in the operator switches below and the
 # comparison isolates the two improvements acting together inside a realistic
 # HPO run (rather than in the single-operator ablations, where every other
@@ -23,21 +23,21 @@
 #   arch_fp_noise: 0.02              symmetry-breaking noise on the new units'
 #                                    fan-out, so added capacity is recruitable
 #
-# NB -- the nets here are Tanh (inherited from ppo_relu_hpo.yaml, unlike the
+# NB -- the nets here are Tanh (inherited from the PPO reference manifest, unlike the
 # single-operator arms, which switch to ReLU). Net2DeeperNet is exact only for
 # ReLU/Identity, so the new_layer mutations fall back to the original
 # initialisation with a one-time warning; add_node / add_latent_node are
 # preserving under any activation and are unaffected.
 #
-# ppo_relu_hpo.yaml's own notes follow.
+# the PPO reference manifest's own notes follow.
 #
 # PPO WITH HPO (population of 4, elitism, architecture + RL-hyperparameter
 # mutations; activation mutations OFF) on Gymnasium MuJoCo.
 #
-# This is the HPO counterpart of ppo_relu_no_hpo.yaml. The base hyperparameters,
+# This is the AgileRL-HPO arm of the PPO reference manifest. The base hyperparameters,
 # the "ReLU to the Rescue" (Jesson et al., 2024) mapping, and the 1-env -> 16-env
 # CleanRL scaling (learn_step = 16 x 2048 = 32768, batch_size = 32768/32 = 1024)
-# are unchanged -- see ppo_relu_no_hpo.yaml for the full derivation -- with one
+# are unchanged -- see the PPO reference manifest for the full derivation -- with one
 # deliberate exception: ent_coef is raised from the paper's 0.0 to 0.001 so HPO can
 # mutate it (the multiplicative mutation cannot move a 0.0 base off zero). The other
 # additions here are the `mutation` / `tournament_selection` blocks (and
@@ -45,7 +45,7 @@
 # regime: a population of agents is trained, periodically mutated, and re-selected
 # by tournament instead of a single never-mutated agent.
 #
-# HPO additions over ppo_relu_no_hpo.yaml:
+# HPO additions over the PPO reference manifest:
 #   pop_size = 4, elitism = true, tournament_size = 2
 #   activation mutations OFF (act_mut = 0.0); arch / new_layer / params / rl_hp on
 #   rl_hp_selection mutates the highest-leverage, well-behaved PPO hyperparameters
@@ -63,7 +63,7 @@ algorithm:
     action_std_init: 0.0
     clip_coef: 0.2
     ent_coef: 0.001  # nonzero so HPO can mutate it (a 0.0 base is a multiplicative
-                     # no-op); matches ppo_relu_no_hpo.yaml's base
+                     # no-op); matches the reference manifest's base
     vf_coef: 0.5
     max_grad_norm: 0.5
     target_kl:
@@ -173,7 +173,7 @@ mutation:
     dormant_tau: 0.01                 # operator threshold: a neuron is dormant when its normalised GraMa score <= this (matches training.dormant_tau below)
     arch_mut_type: func_preserving    # original | func_preserving architecture mutations -- only *additions* are preserving; removals stay positional
     arch_fp_noise: 0.02               # symmetry-breaking noise on new units' fan-out, relative to the consuming layer's weight std (0.0 = exact-zero preservation)
-    arch_encoder_layer_mut: false     # pinned OFF: it is tri-state and would default to true under func_preserving, widening the search space away from the ppo_relu_hpo.yaml twin
+    arch_encoder_layer_mut: false     # pinned OFF: it is tri-state and would default to true under func_preserving, widening the search space away from the the PPO reference manifest twin
 
 network:
     # Paper architecture: width-64 tanh MLP. Under HPO the min/max bounds below
