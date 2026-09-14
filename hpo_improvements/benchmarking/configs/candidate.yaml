@@ -1,21 +1,21 @@
 ---
 # ppo_relu -- ARCHITECTURE-MUTATION ABLATION (function-preserving arch mutations).
 #
-# Derived from ppo_relu_hpo.yaml. Population = 4; only no_mutation and architecture
+# derived from the PPO reference manifest. Population = 4; only no_mutation and architecture
 # mutations are active (no_mut / arch_mut / new_layer; params / act / rl_hp = 0).
 # arch_mut_type: func_preserving makes each architecture *addition* Net2Net-style
 # function-preserving: added units get zero outgoing weights and new head layers are
 # identity-initialised. Removals keep AgileRL's original random-count positional
 # behaviour, so this arm differs from its baseline only in how capacity is added. Its
-# baseline is ppo_relu_arch_original.yaml (identical except arch_mut_type).
+# baseline is baseline.yaml (identical except arch_mut_type).
 # PPO WITH HPO (population of 4, elitism, architecture mutations only; activation
 # mutations OFF) on Gymnasium MuJoCo.
 #
 # This is an architecture-mutation ablation of the HPO counterpart of
-# ppo_relu_no_hpo.yaml. The base hyperparameters, the "ReLU to the Rescue"
+# the PPO reference manifest. The base hyperparameters, the "ReLU to the Rescue"
 # (Jesson et al., 2024) mapping, and the 1-env -> 16-env CleanRL scaling
 # (learn_step = 16 x 2048 = 32768, batch_size = 32768/32 = 1024) are unchanged --
-# see ppo_relu_no_hpo.yaml for the full derivation. (ent_coef is left at 0.001
+# see the PPO reference manifest for the full derivation. (ent_coef is left at 0.001
 # rather than the paper's 0.0, inherited from the HPO config; it is not mutated
 # here since rl_hp mutations are off.) The other additions here are the
 # `mutation` / `tournament_selection` blocks (and pop_size = 4), which switch this
@@ -23,7 +23,7 @@
 # trained, periodically mutated, and re-selected by tournament instead of a single
 # never-mutated agent.
 #
-# HPO additions over ppo_relu_no_hpo.yaml:
+# HPO additions over the PPO reference manifest:
 #   pop_size = 4, elitism = true, tournament_size = 2
 #   only no_mutation + architecture mutations active (no_mut / arch_mut /
 #     new_layer); activation / parameter / RL-hyperparameter mutations are OFF
@@ -42,7 +42,7 @@ algorithm:
     action_std_init: 0.0
     clip_coef: 0.2
     ent_coef: 0.001  # nonzero so HPO can mutate it (a 0.0 base is a multiplicative
-                     # no-op); matches ppo_relu_no_hpo.yaml's base
+                     # no-op); matches the reference manifest's base
     vf_coef: 0.5
     max_grad_norm: 0.5
     target_kl:
