@@ -3,13 +3,13 @@
 # training, architecture + RL-hyperparameter mutations; activation mutations OFF)
 # on Gymnasium MuJoCo.
 #
-# This is the MF-PBT counterpart of ppo_relu_hpo.yaml. The base hyperparameters,
+# This is the MF-PBT counterpart of the PPO reference manifest. The base hyperparameters,
 # the "ReLU to the Rescue" (Jesson et al., 2024) mapping, and the 1-env -> 16-env
 # CleanRL scaling (learn_step = 16 x 2048 = 32768, batch_size = 32768/32 = 1024)
-# are unchanged -- see ppo_relu_no_hpo.yaml for the full derivation -- with one
+# are unchanged -- see the PPO reference manifest for the full derivation -- with one
 # deliberate exception: ent_coef is raised from the paper's 0.0 to 0.001 so HPO can
 # mutate it (the multiplicative mutation cannot move a 0.0 base off zero). The
-# difference from ppo_relu_hpo.yaml is the evolution regime: the
+# difference from the PPO reference manifest is the evolution regime: the
 # `tournament_selection` block is replaced by an `mf_pbt` block and `pop_size` is
 # dropped (it is derived as n_subpopulations * n_individuals_per_subpopulation = 16).
 # MF-PBT (Doulazmi et al.) runs subpopulations at different evolution frequencies to
@@ -19,7 +19,7 @@
 # (= 2 x the base rollout), giving many fine-grained evolution generations. The two
 # subpopulations evolve at the widely-spread frequencies delta_i in {1, 5} cycles.
 #
-# MF-PBT additions over ppo_relu_no_hpo.yaml:
+# MF-PBT additions over the PPO reference manifest:
 #   mf_pbt: 2 subpopulations x 8 individuals (pop_size = 16, derived),
 #     evolution_frequency_ratios = [1, 5], brackets 2/0/2/4
 #   activation mutations OFF (act_mut = 0.0); arch / new_layer / params / rl_hp on
@@ -38,7 +38,7 @@ algorithm:
     action_std_init: 0.0
     clip_coef: 0.2
     ent_coef: 0.001  # nonzero so HPO can mutate it (a 0.0 base is a multiplicative
-                     # no-op); matches ppo_relu_no_hpo.yaml's base
+                     # no-op); matches the reference manifest's base
     vf_coef: 0.5
     max_grad_norm: 0.5
     target_kl:
